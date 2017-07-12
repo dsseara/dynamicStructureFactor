@@ -9,19 +9,20 @@ daniel.seara@yale.edu
 """
 import numpy as np
 
-__all__ = ['azimuthalAverage', 'azimuthalAverage3D']
 
-
-def azimuthalAverage(g, center=None):
+def azimuthalAverage(image, center=None, binsize = 1.0, mask = None, weight = None, returnAll = False):
     """
     Calculates the azimuthal average of a 2D array
     
     INPUT
     ------
-    g = the 2D array
+    image = the 2D array
     center = the center of the image from which to measure
              the radial profile from. If center = None, uses
              the center of the 2D array itself
+    binsize = radial width of each annulus over which to average,
+              given in units of array index
+    mask = 2D array same size as image with 0s where you want to 
 
     OUTPUT
     ------
@@ -29,9 +30,13 @@ def azimuthalAverage(g, center=None):
 
     Based on radialProfile found at:
     http://www.astrobetter.com/wiki/tiki-index.php?page=python_radial_profiles
+
+    TO DO
+    ------
+    - Let user specify binsize
     """
     # Get all the indices in x and y direction
-    [y, x] = np.indices(g.shape)
+    [y, x] = np.indices(image.shape)
 
     # Define the center from which to measure the radius
     if not center:
@@ -40,30 +45,28 @@ def azimuthalAverage(g, center=None):
     # Get distance from all points to center
     r = np.hypot(x-center[0], y-center[1])
 
-    # Get indices of radii in ascending order and 1D
-    inds = np.argsort(r.flat)
-    # Sort both the radii and data, again in 1D
-    rSorted = r.flat[inds]
-    gSorted = g.flat[inds]
+    if mask is None:
+        mask = np.ones(image.shape, dtype='bool')
 
-    # Assuming binsize of 1 pixel, find all radii rounded down to
-    # nearest integer
-    rInt = rSorted.astype(int)
-    # Find out where the radius changes by an integer
-    deltaR = rInt[1:] - rInt[:-1]
-    rInd = np.where(deltaR)[0]
+    if weight is None:
+        weight = np.ones(image.shape)
 
-    # Find how many radii you have inside each band
-    nr = rInd[1:] - rInd[:-1]
+    # Get the bins according to binsize
+    nbins = int(np.round(r.max()) / binsize) + 1
+    maxbin = nbins*binsize
+    bins = np.linspace(0, maxbin, nbins + 1)
 
-    csum = np.cumsum(gSorted, dtype=float)
-    count = csum[rInd[1:]] - csum[rInd[:-1]]
+    binCenters = (bins[1:]-bins[:-1])/2
+    nr = np.histogram(r,bins)[0] # second element returns bins themselves
+    gr = np.histogram(r, bins, weights = image*mask*weight)[0] / np.histogram(r, bins, weights = mask*weight)[0]
 
-    gr = count/nr
-    return gr
+    if returnAll:
+        return binCenters, nr, gr
+    else:
+        return gr
 
 
-def azimuthalAverage3D(gt,tdim = 0):
+def azimuthalAverage3D(gt,tdim = 0, **kwargs):
     """
     Takes 3D data and gets radial component of last two dimensions
     
@@ -86,7 +89,7 @@ def azimuthalAverage3D(gt,tdim = 0):
 
     for tt in range(0, t):
         temp = gt[:, :, tt]
-        tempr = azimuthalAverage(temp)
+        tempr = azimuthalAverage(temp, **kwargs)
         if tt == 0:
             grt = tempr
         else:
@@ -97,8 +100,7 @@ def azimuthalAverage3D(gt,tdim = 0):
 
 def image2array(image):
     """
-    Turns a pims Frame object into a 3D numpy array. As it is, 
-    only each frame is an array
+    Turns a pims Frame object into a 3D numpy array.
 
     INPUT
     ------
@@ -116,9 +118,9 @@ def image2array(image):
     return imageArr
 
 
-def powerSpectrum(array):
+def powerSpectrum(array, window = None, plot = False):
     """
-    Calculates the power spectrum of an shifted array
+    Calculates the power spectrum of a shifted array
 
     INPUT
     ------
@@ -130,6 +132,8 @@ def powerSpectrum(array):
     """
     q = np.fft.fftn(array)
     q = np.fft.fftshift(q)
-    pSpec = np.abs(q)**2
+    pSpec = np.abs(q/q.size)**2 # normalize by number of elements in the array
+
+
 
     return pSpec
