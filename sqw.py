@@ -85,15 +85,36 @@ def azimuthalAverage3D(gt,tdim = 0, **kwargs):
 
     """
     # Get all indices in x,y, and t directions
-    [y, x, t] = gt.shape
+    if tdim == 0:
+        [t, y, x] = gt.shape
 
-    for tt in range(0, t):
-        temp = gt[:, :, tt]
-        tempr = azimuthalAverage(temp, **kwargs)
-        if tt == 0:
-            grt = tempr
-        else:
-            grt = np.vstack((grt,tempr))
+        for tt in range(0, t):
+            temp = gt[tt,:, :]
+            tempr = azimuthalAverage(temp, **kwargs)
+            if tt == 0:
+                grt = tempr
+            else:
+                grt = np.vstack((grt,tempr))
+    elif tdim == 1:
+        [y, t, x] = gt.shape
+
+        for tt in range(0, t):
+            temp = gt[:, tt, :]
+            tempr = azimuthalAverage(temp, **kwargs)
+            if tt == 0:
+                grt = tempr
+            else:
+                grt = np.vstack((grt,tempr))
+    elif tdim == 2:
+        [y, x, t] = gt.shape
+
+        for tt in range(0, t):
+            temp = gt[:, :, tt]
+            tempr = azimuthalAverage(temp, **kwargs)
+            if tt == 0:
+                grt = tempr
+            else:
+                grt = np.vstack((grt,tempr))
 
     return grt
 
@@ -118,7 +139,7 @@ def image2array(image):
     return imageArr
 
 
-def powerSpectrum(array, window = None, plot = False):
+def powerSpectrum(array, window = None, plot = False, onesided = False, norm = False):
     """
     Calculates the power spectrum of a shifted array
 
@@ -132,8 +153,18 @@ def powerSpectrum(array, window = None, plot = False):
     """
     q = np.fft.fftn(array)
     q = np.fft.fftshift(q)
-    pSpec = np.abs(q/q.size)**2 # normalize by number of elements in the array
+    if norm is False:
+        pSpec = np.abs(q)**2 # normalize by number of elements in the array
+    else:
+        pSpec = np.abs(q/q.size)**2 # normalize by number of elements in the array
 
-
+    # if onesided:
+    #     pSpec =
 
     return pSpec
+
+
+def oneSide(array, whichHalf = 1, axis = 0):
+    """
+    Gives back 
+    """
