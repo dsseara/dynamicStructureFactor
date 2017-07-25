@@ -10,10 +10,11 @@ daniel.seara@yale.edu
 import numpy as np
 
 
-def azimuthalAverage(image, center=None, binsize = 1.0, mask = None, weight = None, returnAll = False):
+def azimuthalAverage(image, center=None, binsize=1.0, mask=None, weight=None,
+                     returnAll=False):
     """
     Calculates the azimuthal average of a 2D array
-    
+
     INPUT
     ------
     image = the 2D array
@@ -22,7 +23,7 @@ def azimuthalAverage(image, center=None, binsize = 1.0, mask = None, weight = No
              the center of the 2D array itself
     binsize = radial width of each annulus over which to average,
               given in units of array index
-    mask = 2D array same size as image with 0s where you want to 
+    mask = 2D array same size as image with 0s where you want to
 
     OUTPUT
     ------
@@ -40,10 +41,10 @@ def azimuthalAverage(image, center=None, binsize = 1.0, mask = None, weight = No
 
     # Define the center from which to measure the radius
     if not center:
-        center = np.array([(x.max() - x.min())/2, (y.max() - y.min())/2])
+        center = np.array([(x.max() - x.min()) / 2, (y.max() - y.min()) / 2])
 
     # Get distance from all points to center
-    r = np.hypot(x-center[0], y-center[1])
+    r = np.hypot(x - center[0], y - center[1])
 
     if mask is None:
         mask = np.ones(image.shape, dtype='bool')
@@ -53,12 +54,13 @@ def azimuthalAverage(image, center=None, binsize = 1.0, mask = None, weight = No
 
     # Get the bins according to binsize
     nbins = int(np.round(r.max()) / binsize) + 1
-    maxbin = nbins*binsize
+    maxbin = nbins * binsize
     bins = np.linspace(0, maxbin, nbins + 1)
 
-    binCenters = (bins[1:]-bins[:-1])/2
-    nr = np.histogram(r,bins)[0] # second element returns bins themselves
-    gr = np.histogram(r, bins, weights = image*mask*weight)[0] / np.histogram(r, bins, weights = mask*weight)[0]
+    binCenters = (bins[1:] - bins[:-1]) / 2
+    nr = np.histogram(r, bins)[0]  # second element returns bins themselves
+    gr = np.histogram(r, bins, weights=image * mask * weight)[0] \
+        / np.histogram(r, bins, weights=mask * weight)[0]
 
     if returnAll:
         return binCenters, nr, gr
@@ -66,10 +68,10 @@ def azimuthalAverage(image, center=None, binsize = 1.0, mask = None, weight = No
         return gr
 
 
-def azimuthalAverage3D(gt,tdim = 0, **kwargs):
+def azimuthalAverage3D(gt, tdim=0, **kwargs):
     """
     Takes 3D data and gets radial component of last two dimensions
-    
+
     INPUT
     ------
     gt = 3D data, first dimension is time, second two are spatial
@@ -89,12 +91,12 @@ def azimuthalAverage3D(gt,tdim = 0, **kwargs):
         [t, y, x] = gt.shape
 
         for tt in range(0, t):
-            temp = gt[tt,:, :]
+            temp = gt[tt, :, :]
             tempr = azimuthalAverage(temp, **kwargs)
             if tt == 0:
                 grt = tempr
             else:
-                grt = np.vstack((grt,tempr))
+                grt = np.vstack((grt, tempr))
     elif tdim == 1:
         [y, t, x] = gt.shape
 
@@ -104,7 +106,7 @@ def azimuthalAverage3D(gt,tdim = 0, **kwargs):
             if tt == 0:
                 grt = tempr
             else:
-                grt = np.vstack((grt,tempr))
+                grt = np.vstack((grt, tempr))
     elif tdim == 2:
         [y, x, t] = gt.shape
 
@@ -114,7 +116,7 @@ def azimuthalAverage3D(gt,tdim = 0, **kwargs):
             if tt == 0:
                 grt = tempr
             else:
-                grt = np.vstack((grt,tempr))
+                grt = np.vstack((grt, tempr))
 
     return grt
 
@@ -133,13 +135,13 @@ def image2array(image):
     """
     nframes = image[-1].frame_no + 1
     imageArr = image[0]
-    for ii in range(1,nframes):
-        imageArr = np.dstack((imageArr,image[ii]))
+    for ii in range(1, nframes):
+        imageArr = np.dstack((imageArr, image[ii]))
 
     return imageArr
 
 
-def powerSpectrum(array, window = None, plot = False, onesided = False, norm = False):
+def powerSpectrum(array, window=None, plot=False, onesided=False, norm=False):
     """
     Calculates the power spectrum of a shifted array
 
@@ -154,9 +156,9 @@ def powerSpectrum(array, window = None, plot = False, onesided = False, norm = F
     q = np.fft.fftn(array)
     q = np.fft.fftshift(q)
     if norm is False:
-        pSpec = np.abs(q)**2 # normalize by number of elements in the array
+        pSpec = np.abs(q)**2  # normalize by number of elements in the array
     else:
-        pSpec = np.abs(q/q.size)**2 # normalize by number of elements in the array
+        pSpec = np.abs(q / q.size)**2  # normalize by numel in the array
 
     # if onesided:
     #     pSpec =
@@ -164,7 +166,23 @@ def powerSpectrum(array, window = None, plot = False, onesided = False, norm = F
     return pSpec
 
 
-def oneSide(array, whichHalf = 1, axis = 0):
+def oneSide(array, whichHalf=1, axis=0):
     """
-    Gives back 
+    Gives back
     """
+
+
+def dhoModel(w, Gamma0, I0, Gamma, I, Omega):
+    """
+    Defines the damped harmonic oscillator model for S(q,w)/S(q)
+
+    This is to be used at a specific q, which can then be used to build all
+    the parameters as functions of q
+
+    S(q,w)         1/2 Gamma0(q)                   Omega(q) Gamma^2(q)
+    ----- = I0(q)----------------- + I(q)-------------------------------------
+    S(q)         w^2 + (Gamma0/2)^2      (w^2 - Omega^2(q))^2 + (w Gamma(q))^2
+    """
+
+    return I0 * 0.5 * Gamma0 / (w**2 + (0.5 * Gamma0)**2) \
+        + I * Omega * Gamma**2 / ((w**2 - Omega**2)**2 + (w * Gamma)**2)
