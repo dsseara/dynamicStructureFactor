@@ -83,7 +83,6 @@ def azimuthalAverage3D(gt, tdim=0, **kwargs):
 
     TO DO
     -----
-    - allow user input of which dimension is the time dimension
 
     """
     # Get all indices in x,y, and t directions
@@ -168,7 +167,7 @@ def powerSpectrum(array, window=None, plot=False, onesided=False, norm=False):
 
 def oneSide(array, whichHalf=1, axis=0):
     """
-    Gives back
+    Gives back only half
     """
 
 
@@ -181,8 +180,31 @@ def dhoModel(w, Gamma0, I0, Gamma, I, Omega):
 
     S(q,w)         1/2 Gamma0(q)                   Omega(q) Gamma^2(q)
     ----- = I0(q)----------------- + I(q)-------------------------------------
-    S(q)         w^2 + (Gamma0/2)^2      (w^2 - Omega^2(q))^2 + (w Gamma(q))^2
+     S(q)        w^2 + (Gamma0/2)^2      (w^2 - Omega^2(q))^2 + (w Gamma(q))^2
     """
 
     return I0 * 0.5 * Gamma0 / (w**2 + (0.5 * Gamma0)**2) \
         + I * Omega * Gamma**2 / ((w**2 - Omega**2)**2 + (w * Gamma)**2)
+
+
+def dhoJac(w, Gamma0, I0, Gamma, I, Omega):
+    """
+    Define the jacobian of the damped harmonic oscillator model for S(q,w)/S(q)
+
+    J[0] = d/dI0
+    J[1] = d/dGamma0
+    J[2] = d/dI
+    J[3] = d/dGamma
+    J[4] = d/dOmega
+    """
+    J = np.zeros(5)
+
+    J[0] = 0.5 * Gamma0 / (w**2 + (0.5 * Gamma0)**2)
+    J[1] = 0.5 * I0 * (w**2 - 0.75 * Gamma0**2) / (w**2 + (0.5 * Gamma0)**2)**2
+    J[2] = Omega * Gamma**2 / ((w**2 - Omega**2)**2 + (w * Gamma)**2)
+    J[3] = 2 * I * Omega * Gamma * (w**2 - Omega**2)**2 \
+        / ((w**2 - Omega**2)**2 + w**2 * Gamma**2)**2
+    J[4] = I * Gamma**2 * \
+        ((w - 2 * Omega**2) * (w - 3 * Omega**2) + w**2 * Gamma**2) \
+        / ((w**2 - Omega**2)**2 + (w * Gamma)**2)**2
+    return J
