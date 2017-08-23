@@ -130,12 +130,15 @@ def image2array(image):
 
     OUTPUT
     ------
-    imageArr = 3D numpy array, size [M,N,P]
+    imageArr = 3D numpy array, size [P,M,N]
     """
-    nframes = image[-1].frame_no + 1
-    imageArr = image[0]
-    for ii in range(1, nframes):
-        imageArr = np.dstack((imageArr, image[ii]))
+    startFrame = image[0].frame_no
+    endFrame = image[-1].frame_no + 1
+    nframes = endFrame - startFrame
+    imageArr = np.zeros([nframes, image[0].shape[0], image[0].shape[1]])
+
+    for ii in range(0, nframes):
+        imageArr[ii, :, :] = image[ii]
 
     return imageArr
 
@@ -167,8 +170,10 @@ def powerSpectrum(array, window=None, plot=False, onesided=False, norm=False):
 
 def oneSide(array, whichHalf=1, axis=0):
     """
-    Gives back only half
+    Gives back half of an array
     """
+
+    if 
 
 
 def dhoModel(w, Gamma0, I0, Gamma, I, Omega):
@@ -208,3 +213,7 @@ def dhoJac(w, Gamma0, I0, Gamma, I, Omega):
         ((w - 2 * Omega**2) * (w - 3 * Omega**2) + w**2 * Gamma**2) \
         / ((w**2 - Omega**2)**2 + (w * Gamma)**2)**2
     return J
+
+
+def objectiveFunc(data, *args):
+    return data - dhoModel(*args)
