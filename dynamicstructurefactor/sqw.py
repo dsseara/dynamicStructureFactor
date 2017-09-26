@@ -10,34 +10,40 @@ daniel.seara@yale.edu
 import numpy as np
 
 
-def azimuthalAverage(image, center=None, binsize=1.0, mask=None, weight=None,
-                     returnAll=False):
+def azimuthalAverage(data, center=None, binsize=1.0, mask=None, weight=None):
     """
     Calculates the azimuthal average of a 2D array
 
-    INPUT
-    ------
-    image = the 2D array
-    center = the center of the image from which to measure
-             the radial profile from. If center = None, uses
-             the center of the 2D array itself
-    binsize = radial width of each annulus over which to average,
-              given in units of array index
-    mask = 2D array same size as image with 0s where you want to
+    Parameters
+    ----------
+    data : array_like
+        2D numpy array of numerical data
+    center : array_like, optional
+        1x2 numpy array the center of the image from which to measure the 
+        radial profile from, in units of array index. Default is center of
+        data array
+    binsize : scalar, optional
+        radial width of each annulus over which to average,
+        in units of array index
+    mask : array_like, optional
+        2D array same size as data with 0s where you want to exclude data.
+        Default is to not use a mask
 
-    OUTPUT
-    ------
-    gr = radially averaged 1D array
+    Returns
+    -------
+    radial_profile : array_like
+        Radially averaged 1D array from data array
 
     Based on radialProfile found at:
     http://www.astrobetter.com/wiki/tiki-index.php?page=python_radial_profiles
 
     TO DO
     ------
-    - Let user specify binsize
+
     """
+    data = np.asarray(data)
     # Get all the indices in x and y direction
-    [y, x] = np.indices(image.shape)
+    [y, x] = np.indices(data.shape)
 
     # Define the center from which to measure the radius
     if not center:
@@ -47,89 +53,84 @@ def azimuthalAverage(image, center=None, binsize=1.0, mask=None, weight=None,
     r = np.hypot(x - center[0], y - center[1])
 
     if mask is None:
-        mask = np.ones(image.shape, dtype='bool')
+        mask = np.ones(data.shape, dtype='bool')
 
     if weight is None:
-        weight = np.ones(image.shape)
+        weight = np.ones(data.shape)
 
     # Get the bins according to binsize
     nbins = int(np.round(r.max()) / binsize) + 1
     maxbin = nbins * binsize
     bins = np.linspace(0, maxbin, nbins + 1)
 
-    binCenters = (bins[1:] - bins[:-1]) / 2
-    nr = np.histogram(r, bins)[0]  # second element returns bins themselves
-    gr = np.histogram(r, bins, weights=image * mask * weight)[0] \
+    bin_centers = (bins[1:] - bins[:-1]) / 2
+    values = np.histogram(r, bins)[0]  # second element returns bins themselves
+    radial_profile = np.histogram(r, bins, weights=data * mask * weight)[0] \
         / np.histogram(r, bins, weights=mask * weight)[0]
 
-    if returnAll:
-        return binCenters, nr, gr
-    else:
-        return gr
+    return radial_profile, values, bin_centers
 
 
-def azimuthalAverage3D(gt, tdim=0, **kwargs):
+def azimuthalAverage3D(data, tdim=0, center=None, binsize=1.0, mask=None, weight=None):
     """
     Takes 3D data and gets radial component of last two dimensions
 
-    INPUT
-    ------
-    gt = 3D data, first dimension is time, second two are spatial
+    Parameters
+    ----------
+    data : array_like
+        3D numpy array, 1 dimension is time, the other two are spatial.
+        User specifies which dimension in temporal
+    tdim : scalar, optional
+        specifies which dimension of data is temporal. Options are 0, 1, 2.
+        Defaults to 0
+    center : array_like, optional
+        1x2 numpy array the center of the image from which to measure the 
+        radial profile from, in units of array index. Default is center of
+        data array
+    binsize : scalar, optional
+        radial width of each annulus over which to average,
+        in units of array index
+    mask : array_like, optional
+        2D array same size as data with 0s where you want to exclude data.
+        Default is to not use a mask
 
-    OUTPUT
-    ------
-    grt = 2D data, first dimesion is time, second is the radially averaged
-          spatial components
+    Returns
+    -------
+    tr_profile : array_like
+        2D, spatially radially averaged data over time.
+        First dimesion is time, second is spatial
 
+    See also: azimuthalAverage
     TO DO
     -----
 
     """
-    # Get all indices in x,y, and t directions
-    if tdim == 0:
-        [t, y, x] = gt.shape
 
-        for tt in range(0, t):
-            temp = gt[tt, :, :]
-            tempr = azimuthalAverage(temp, **kwargs)
-            if tt == 0:
-                grt = tempr
-            else:
-                grt = np.vstack((grt, tempr))
-    elif tdim == 1:
-        [y, t, x] = gt.shape
+    data = np.asarray(data)
 
-        for tt in range(0, t):
-            temp = gt[:, tt, :]
-            tempr = azimuthalAverage(temp, **kwargs)
-            if tt == 0:
-                grt = tempr
-            else:
-                grt = np.vstack((grt, tempr))
-    elif tdim == 2:
-        [y, x, t] = gt.shape
+    # Put temporal axis first
+    data = np.rollaxis(data, tdim)
 
-        for tt in range(0, t):
-            temp = gt[:, :, tt]
-            tempr = azimuthalAverage(temp, **kwargs)
-            if tt == 0:
-                grt = tempr
-            else:
-                grt = np.vstack((grt, tempr))
+    for frame, spatial_data in enumerate(data):
+        radial_profile = azimuthalAverage(data, center, binsize, mask, weight)
+        if frame == 0:
+            tr_profile = radial_profile
+        else:
+            tr_profile = np.vstack((tr_profile, radial_profile))
 
-    return grt
+    return tr_profile
 
 
 def image2array(image):
     """
     Turns a pims Frame object into a 3D numpy array.
 
-    INPUT
-    ------
+    Parameters
+    ----------
     image = The pims Frame object, size [M,N], with P frames
 
-    OUTPUT
-    ------
+    Returns
+    -------
     imageArr = 3D numpy array, size [P,M,N]
     """
     startFrame = image[0].frame_no
@@ -143,29 +144,32 @@ def image2array(image):
     return imageArr
 
 
-def powerSpectrum(array, window=None, plot=False, onesided=False, norm=False):
+def powerSpectrum(data, window='None', plot=False, onesided=False, norm=False):
     """
     Calculates the power spectrum of a shifted array
 
-    INPUT
-    ------
-    array = Array of which to find the power spectrum
+    Parameters
+    ----------
+    data : array_like
+        nd numpy array of which to find the power spectrum
+    window : string, optional
+        indicates windowing function to use on 
 
-    OUTPUT
-    ------
-    pSpec = Power spectrum of array
+    Returns
+    -------
+    power_spectrum = Power spectrum of array
     """
-    q = np.fft.fftn(array)
+    q = np.fft.fftn(data)
     q = np.fft.fftshift(q)
     if norm is False:
-        pSpec = np.abs(q)**2  # normalize by number of elements in the array
+        power_spectrum = np.abs(q)**2  # normalize by number of elements in the array
     else:
-        pSpec = np.abs(q / q.size)**2  # normalize by numel in the array
+        power_spectrum = np.abs(q / q.size)**2  # normalize by numel in the array
 
     # if onesided:
-    #     pSpec =
+    #     power_spectrum =
 
-    return pSpec
+    return power_spectrum
 
 
 def oneSide(array, whichHalf=1, axis=0):
