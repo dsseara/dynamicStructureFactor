@@ -8,9 +8,10 @@ www.github.com/dsseara
 daniel.seara@yale.edu
 """
 import numpy as np
+import scipy.signal as signal
 
 
-def azimuthalAverage(data, center=None, binsize=1.0, mask=None, weight=None):
+def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
     """
     Calculates the azimuthal average of a 2D array
 
@@ -71,7 +72,8 @@ def azimuthalAverage(data, center=None, binsize=1.0, mask=None, weight=None):
     return radial_profile, values, bin_centers
 
 
-def azimuthalAverage3D(data, tdim=0, center=None, binsize=1.0, mask=None, weight=None):
+def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
+                         weight=None):
     """
     Takes 3D data and gets radial component of last two dimensions
 
@@ -84,7 +86,7 @@ def azimuthalAverage3D(data, tdim=0, center=None, binsize=1.0, mask=None, weight
         specifies which dimension of data is temporal. Options are 0, 1, 2.
         Defaults to 0
     center : array_like, optional
-        1x2 numpy array the center of the image from which to measure the 
+        1x2 numpy array the center of the image from which to measure the
         radial profile from, in units of array index. Default is center of
         data array
     binsize : scalar, optional
@@ -112,7 +114,7 @@ def azimuthalAverage3D(data, tdim=0, center=None, binsize=1.0, mask=None, weight
     data = np.rollaxis(data, tdim)
 
     for frame, spatial_data in enumerate(data):
-        radial_profile = azimuthalAverage(data, center, binsize, mask, weight)
+        radial_profile = azimuthal_average(data, center, binsize, mask, weight)
         if frame == 0:
             tr_profile = radial_profile
         else:
@@ -144,7 +146,8 @@ def image2array(image):
     return imageArr
 
 
-def powerSpectrum(data, window='None', plot=False, onesided=False, norm=False):
+def power_spectrum(data, spacings=None, window=None, onesided=True,
+                   normalize=False):
     """
     Calculates the power spectrum of a shifted array
 
@@ -152,32 +155,123 @@ def powerSpectrum(data, window='None', plot=False, onesided=False, norm=False):
     ----------
     data : array_like
         nd numpy array of which to find the power spectrum
-    window : string, optional
-        indicates windowing function to use on 
+    spacings : array_like
+        array or list of physical spacings between points in data in each dimension.
+        Used to return grid in fourier space. Defaults to array of ones.
+    window : string, float, or tuple, optional
+        Type of window to create. Same as scipy.signal.get_window()
+    onesided : bool
+        boolean to return one-sided power spectrum only or not. Default True
+    normalize : bool
+        boolean to normalize the power spectrum by the size of
 
     Returns
     -------
-    power_spectrum = Power spectrum of array
+    power_spectrum : array_like
+        Power spectrum of data as nd numpy array
+    fourier_grid : list
+        list whose nth element is a numpy array of fourier coordinates of nth
+        dimension of data
+
+    See also
+    --------
+    scipy.signal.get_window(),
     """
-    q = np.fft.fftn(data)
-    q = np.fft.fftshift(q)
-    if norm is False:
-        power_spectrum = np.abs(q)**2  # normalize by number of elements in the array
+
+    data = np.asarray(data)
+
+    if window is not None:
+        w = signal.get_window(window)
+        data = _nd_window(data, w)
+
+    if spacings is None:
+        spacings = np.ones(len(data.shape))
     else:
-        power_spectrum = np.abs(q / q.size)**2  # normalize by numel in the array
+        spacings = np.asarray(spacings)
 
-    # if onesided:
-    #     power_spectrum =
+    fourier_grid = []
 
-    return power_spectrum
+    for dim_size, dim_spacing in zip(data.shape, spacings):
+        fourier_grid.append(2 * np.pi * np.fft.fftshift(np.fft.fftfreq(dim_size, dim_spacing)))
+
+    data_fft = np.fft.fftshift(np.fft.fftn(data))
+
+    if normalize:
+        power_spectrum = np.abs(data_fft / data_fft.size)**2
+    else:
+        power_spectrum = np.abs(data_fft)**2
+
+    if onesided:
+        power_spectrum = _one_side(power_spectrum)
+        for dim, array in fourier_grid:
+            fourier_grid[dim] = _one_side(array)
+
+    return power_spectrum, fourier_grid
 
 
-def oneSide(array, whichHalf=1, axis=0):
+def _one_side(array, axis=0, whichHalf=1):
     """
     Gives back half of an array
+
+    Parameters
+    ----------
+    array : array_like
+        data to cut in half
+    axis : scalar, optional
+        Which axis to return one side of. Default 0
+    whichHalf : scalar, optional
+        1 for first half of array along given axis, 2 for second half.
+        Default 1
+
+    Returns
+    -------
+    halfArray : array_like
+        same data as array, but only half as long along given axis
+    """
+    length = array.shape[axis]
+    halfLength = np.floor(length / 2).astype(int)
+    if whichHalf == 1:
+        halfArray = np.rollaxis(np.rollaxis(array, axis)[:halfLength, ...],
+                                0, axis + 1)
+    elif whichHalf == 2:
+        halfArray = np.rollaxis(np.rollaxis(array, axis)[halfLength:, ...],
+                                0, axis + 1)
+
+    return halfArray
+
+
+def _nd_window(data, window):
+    """
+    Performs an in-place windowing on N-dimensional spatiotemporal-domain data.
+    Done to mitigate boundary effects in the FFT.
+    Adapted from: https://stackoverflow.com/questions/27345861/
+                  extending-1d-function-across-3-dimensions-for-data-windowing
+
+    Parameters
+    ----------
+    data : array_like
+        nd input data to be windowed, modified in place.
+    window : array_like
+        1d window function, output from scipy.signal.get_window()
+
+    Results
+    -------
+    data : array_like
+        in place windowed version of input array, data
+
+    See also
+    --------
+    scipy.signal.get_window()
     """
 
-    if 
+    for axis, axis_size in enumerate(data.shape):
+        # set up shape for numpy broadcasting
+        filter_shape = [1, ] * data.ndim
+        filter_shape[axis] = axis_size
+        window = window.reshape(filter_shape)
+        # scale the window intensities to maintain image intensity
+        np.power(window, (1.0 / data.ndim), output=window)
+        data *= window
 
 
 def dhoModel(w, Gamma0, I0, Gamma, I, Omega):
