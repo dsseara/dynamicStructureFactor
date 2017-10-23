@@ -142,7 +142,7 @@ def image2array(image):
     return imageArr
 
 
-def power_spectrum(data, spacings=None, window=None, onesided=True,
+def power_spectrum(data, spacings=None, window='boxcar', onesided=True,
                    normalize=False):
     """
     Calculates the power spectrum of a shifted array
@@ -152,10 +152,12 @@ def power_spectrum(data, spacings=None, window=None, onesided=True,
     data : array_like
         nd numpy array of which to find the power spectrum
     spacings : array_like
-        array or list of physical spacings between points in data in each dimension.
-        Used to return grid in fourier space. Defaults to array of ones.
+        array or list of physical spacings between points in data in each
+        dimension. Used to return grid in fourier space. Defaults to array of
+        ones.
     window : string, float, or tuple, optional
-        Type of window to create. Same as scipy.signal.get_window()
+        Type of window to create, defaults to 'boxcar'.
+        See `scipy.signal.get_window` for all windows allowed
     onesided : bool
         boolean to return one-sided power spectrum only or not. Default True
     normalize : bool
@@ -177,9 +179,9 @@ def power_spectrum(data, spacings=None, window=None, onesided=True,
     data = np.asarray(data)
 
     if window is not None:
-        for dim, dim_data in enumerate(data):
+        for dim_data, dim_size in zip(data, data.shape):
             n = dim_data.size
-            w = signal.get_window(window, dimsize)
+            w = signal.get_window(window, dim_size)
             _nd_window(data, w)
 
     if spacings is None:
@@ -200,9 +202,9 @@ def power_spectrum(data, spacings=None, window=None, onesided=True,
         power_spectrum = np.abs(data_fft)**2
 
     if onesided:
-        power_spectrum = _one_side(power_spectrum)
+        power_spectrum = _one_side(power_spectrum, whichHalf=2)
         for dim, array in enumerate(fourier_grid):
-            fourier_grid[dim] = _one_side(array)
+            fourier_grid[dim] = _one_side(array, whichHalf=2)
 
     return power_spectrum, fourier_grid
 
@@ -249,8 +251,8 @@ def _nd_window(data, window):
     ----------
     data : array_like
         nd input data to be windowed, modified in place.
-    window : array_like
-        1d window function, output from scipy.signal.get_window()
+    window : string, float, or tuple
+        Type of window to create. Same as scipy.signal.get_window()
 
     Results
     -------
@@ -266,10 +268,10 @@ def _nd_window(data, window):
         # set up shape for numpy broadcasting
         filter_shape = [1, ] * data.ndim
         filter_shape[axis] = axis_size
-        window = window.reshape(filter_shape)
+        w = signal.get_window(window, axis_size).reshape(filter_shape)
         # scale the window intensities to maintain image intensity
-        np.power(window, (1.0 / data.ndim), output=window)
-        data *= window
+        np.power(w, (1.0 / data.ndim), out=w)
+        data *= w
 
 
 def dhoModel(w, Gamma0, I0, Gamma, I, Omega):
