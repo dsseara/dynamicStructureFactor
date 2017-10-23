@@ -37,10 +37,6 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
 
     Based on radialProfile found at:
     http://www.astrobetter.com/wiki/tiki-index.php?page=python_radial_profiles
-
-    TO DO
-    ------
-
     """
     data = np.asarray(data)
     # Get all the indices in x and y direction
@@ -114,7 +110,7 @@ def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
     data = np.rollaxis(data, tdim)
 
     for frame, spatial_data in enumerate(data):
-        radial_profile = azimuthal_average(data, center, binsize, mask, weight)
+        radial_profile = azimuthal_average(spatial_data, center, binsize, mask, weight)
         if frame == 0:
             tr_profile = radial_profile
         else:
@@ -181,8 +177,10 @@ def power_spectrum(data, spacings=None, window=None, onesided=True,
     data = np.asarray(data)
 
     if window is not None:
-        w = signal.get_window(window)
-        data = _nd_window(data, w)
+        for dim, dim_data in enumerate(data):
+            n = dim_data.size
+            w = signal.get_window(window, dimsize)
+            _nd_window(data, w)
 
     if spacings is None:
         spacings = np.ones(len(data.shape))
@@ -203,7 +201,7 @@ def power_spectrum(data, spacings=None, window=None, onesided=True,
 
     if onesided:
         power_spectrum = _one_side(power_spectrum)
-        for dim, array in fourier_grid:
+        for dim, array in enumerate(fourier_grid):
             fourier_grid[dim] = _one_side(array)
 
     return power_spectrum, fourier_grid
