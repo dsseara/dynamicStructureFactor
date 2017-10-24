@@ -178,11 +178,7 @@ def power_spectrum(data, spacings=None, window='boxcar', onesided=True,
 
     data = np.asarray(data)
 
-    if window is not None:
-        for dim_data, dim_size in zip(data, data.shape):
-            n = dim_data.size
-            w = signal.get_window(window, dim_size)
-            _nd_window(data, w)
+    _nd_window(data, window)
 
     if spacings is None:
         spacings = np.ones(len(data.shape))
