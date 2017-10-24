@@ -9,6 +9,7 @@ daniel.seara@yale.edu
 """
 import numpy as np
 import scipy.signal as signal
+import warnings
 
 
 def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
@@ -20,7 +21,7 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
     data : array_like
         2D numpy array of numerical data
     center : array_like, optional
-        1x2 numpy array the center of the image from which to measure the 
+        1x2 numpy array the center of the image from which to measure the
         radial profile from, in units of array index. Default is center of
         data array
     binsize : scalar, optional
@@ -110,7 +111,11 @@ def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
     data = np.rollaxis(data, tdim)
 
     for frame, spatial_data in enumerate(data):
-        radial_profile = azimuthal_average(spatial_data, center, binsize, mask, weight)
+        radial_profile = azimuthal_average(spatial_data,
+                                           center,
+                                           binsize,
+                                           mask,
+                                           weight)
         if frame == 0:
             tr_profile = radial_profile
         else:
@@ -125,11 +130,11 @@ def image2array(image):
 
     Parameters
     ----------
-    image = The pims Frame object, size [M,N], with P frames
+    image : The pims Frame object, size [M,N], with P frames
 
     Returns
     -------
-    imageArr = 3D numpy array, size [P,M,N]
+    imageArr : 3D numpy array, size [P,M,N]
     """
     startFrame = image[0].frame_no
     endFrame = image[-1].frame_no + 1
@@ -142,67 +147,117 @@ def image2array(image):
     return imageArr
 
 
-def power_spectrum(data, spacings=None, window='boxcar', onesided=True,
-                   normalize=False):
+def welchn(data, nperseg=None, noverlap=None, fs=None, window='boxcar',
+           return_onesided=True, scaling='density', detrend='constant',
+           nfft=None):
     """
-    Calculates the power spectrum of a shifted array
+    Estimate power spectral density of n-dimensional data using Welch's method.
 
     Parameters
     ----------
     data : array_like
-        nd numpy array of which to find the power spectrum
-    spacings : array_like
-        array or list of physical spacings between points in data in each
-        dimension. Used to return grid in fourier space. Defaults to array of
-        ones.
+        N-dimensional input array, can be complex
+    nperseg : array_like, optional
+        Length of each segment in each dimension. If `None`, uses whole
+        dimension length. Defaults to `None`.
+    noverlap : array_like, optional
+        Number of points to overlap between segments in each dimension. If
+        `None`, ``noverlap = nperseg // 2``. Defaults to `None`.
+    fs : array_like, optional
+        Sampling frequency in each dimension of data. Defaults to 1 for all
+        dimensions
     window : string, float, or tuple, optional
-        Type of window to create, defaults to 'boxcar'.
+        Type of window to use, defaults to 'boxcar'.
         See `scipy.signal.get_window` for all windows allowed
-    onesided : bool
-        boolean to return one-sided power spectrum only or not. Default True
-    normalize : bool
-        boolean to normalize the power spectrum by the size of
-
+    return_onesided : bool, optional
+        Boolean to return one-sided power spectrum. If `data` is complex,
+        always returns two-sided power spectrum. Defaults to `True`.
+    scaling : {'density', 'spectrum'}, optional
+        Returns power spectral density ('density') with units of `data^2 / Hz`
+        or simply the power spectrum ('spectrum') with units of `data^2`.
+        Defaults to 'density'.
+    detrend : str or function or `False`, optional
+        Specifies how to detrend each segment. If `detrend` is a
+        string, it is passed as the `type` argument to the `detrend`
+        function. If it is a function, it takes a segment and returns a
+        detrended segment. If `detrend` is `False`, no detrending is
+        done. Defaults to 'constant'.
+    nfft : array_like, optional
+        Length of the FFT used in each dimension, if a zero padded FFT is
+        desired. If `None`, the FFT length is `nperseg`. Defaults to `None`.
     Returns
     -------
-    power_spectrum : array_like
+    psd : array_like
         Power spectrum of data as nd numpy array
-    fourier_grid : list
+    freqs : list
         list whose nth element is a numpy array of fourier coordinates of nth
         dimension of data
 
     See also
     --------
-    scipy.signal.get_window(),
+    scipy.signal.get_window
+    scipy.signal.welch
     """
 
     data = np.asarray(data)
 
-    _nd_window(data, window)
+    if window is None:
+        window = 'boxcar'
 
-    if spacings is None:
-        spacings = np.ones(len(data.shape))
+    if nperseg is not None:  # if specified by user
+        nperseg = np.asarray(nperseg).astype(int)
+        if nperseg.size != data.ndim:
+            raise ValueError('nperseg.size = {0}, need data.ndim = {1} values'
+                             .format(nperseg.size, data.ndim))
     else:
-        spacings = np.asarray(spacings)
+        nperseg = data.shape
 
-    fourier_grid = []
+    if fs is None:
+        fs = np.ones(data.ndim)
+    else:
+        fs = np.asarray(fs)
+        if fs.size != data.ndim:
+            raise ValueError('fs.size = {0}, need data.ndim = {1} values'
+                             .format(fs.size, data.ndim))
 
-    for dim_size, dim_spacing in zip(data.shape, spacings):
-        fourier_grid.append(2 * np.pi * np.fft.fftshift(np.fft.fftfreq(dim_size, dim_spacing)))
+    data, win = _nd_window(data, window, nperseg)
+    freqs = []
+
+    # Set scaling
+    if scaling == 'density':
+        scale = 1.0 / (fs * (win * win).sum())
+    elif scaling == 'spectrum':
+        scale = 1.0 / win.sum()**2
+    else:
+        raise ValueError('Unknown scaling: {0}'.format(scaling))
+
+    if return_onesided:
+        if np.iscomplexobj(data):
+            sides = 'twosided'
+            warnings.warn('Input data is complex, switching to '
+                          'return_onesided=False')
+        else:
+            sides = 'onesided'
+    else:
+        sides = 'twosided'
+
+    for dim_size, dim_sampling in zip(data.shape, fs):
+        freqs.append(2 * np.pi *
+                     np.fft.fftshift(np.fft.fftfreq(dim_size, dim_sampling)))
 
     data_fft = np.fft.fftshift(np.fft.fftn(data))
 
     if normalize:
-        power_spectrum = np.abs(data_fft / data_fft.size)**2
+        psd = np.abs(data_fft / data_fft.size)**2
     else:
-        power_spectrum = np.abs(data_fft)**2
+        psd = np.abs(data_fft)**2
 
     if onesided:
-        power_spectrum = _one_side(power_spectrum, whichHalf=2)
-        for dim, array in enumerate(fourier_grid):
-            fourier_grid[dim] = _one_side(array, whichHalf=2)
+        psd = _one_side(psd, whichHalf=2)
+        for dim, array in enumerate(freqs):
+            freqs[dim] = _one_side(array, whichHalf=2)
 
-    return power_spectrum, fourier_grid
+    return psd, freqs
 
 
 def _one_side(array, axis=0, whichHalf=1):
@@ -236,10 +291,10 @@ def _one_side(array, axis=0, whichHalf=1):
     return halfArray
 
 
-def _nd_window(data, window):
+def _nd_window(data, window, nperseg):
     """
-    Performs an in-place windowing on N-dimensional spatiotemporal-domain data.
-    Done to mitigate boundary effects in the FFT.
+    Windows n-dimensional array. Done to mitigate boundary effects in the FFT.
+    This is a helper function for welchn
     Adapted from: https://stackoverflow.com/questions/27345861/
                   extending-1d-function-across-3-dimensions-for-data-windowing
 
@@ -248,26 +303,33 @@ def _nd_window(data, window):
     data : array_like
         nd input data to be windowed, modified in place.
     window : string, float, or tuple
-        Type of window to create. Same as scipy.signal.get_window()
+        Type of window to create. Same as `scipy.signal.get_window()`
+    nperseg : array_like
 
     Results
     -------
     data : array_like
-        in place windowed version of input array, data
+        windowed version of input array, data
+    win : list of arrays
+        each element returns the window used on the corresponding dimension of
+        `data`
 
     See also
     --------
-    scipy.signal.get_window()
+    `scipy.signal.get_window()`
+    `sqw.welchn()`
     """
-
+    win = []
     for axis, axis_size in enumerate(data.shape):
         # set up shape for numpy broadcasting
         filter_shape = [1, ] * data.ndim
         filter_shape[axis] = axis_size
-        w = signal.get_window(window, axis_size).reshape(filter_shape)
+        win[axis] = signal.get_window(window, axis_size).reshape(filter_shape)
         # scale the window intensities to maintain image intensity
-        np.power(w, (1.0 / data.ndim), out=w)
-        data *= w
+        np.power(win[axis], (1.0 / data.ndim), out=win[axis])
+        data *= win[axis]
+
+    return data, win
 
 
 def dhoModel(w, Gamma0, I0, Gamma, I, Omega):
