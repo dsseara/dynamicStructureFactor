@@ -28,17 +28,25 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
     binsize : scalar, optional
         radial width of each annulus over which to average,
         in units of array index
-    mask : array_like, optional
-        2D array same size as data with 0s where you want to exclude data.
+    mask : array_like or string, optional
+        Mask of data. Either a 2D array same size as data with 0s where you
+        want to exclude data, or "circle", which only includes data in the
+        largest inscribable circle within the data.
         Default is to not use a mask
 
     Returns
     -------
-    radial_profile : array_like
+    radialProfile : array_like
         Radially averaged 1D array from data array
+    binCenters : array_like
+        Radial coordinate of radial_profile
 
     Based on radialProfile found at:
     http://www.astrobetter.com/wiki/tiki-index.php?page=python_radial_profiles
+
+    To do
+    -----
+    * Make "circle" option of mask accept non-square inputs
     """
     data = np.asarray(data)
     # Get all the indices in x and y direction
@@ -53,21 +61,30 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
 
     if mask is None:
         mask = np.ones(data.shape, dtype='bool')
+    elif mask is 'circle':
+        radius = (x.max() + 1) / 2
+        mask = (r < radius)
+    else:
+        mask = np.asarray(mask)
 
     if weight is None:
         weight = np.ones(data.shape)
 
     # Get the bins according to binsize
-    nbins = int(np.round(r.max()) / binsize) + 1
+    nbins = int(np.round((r * mask).max()) / binsize) + 1
     maxbin = nbins * binsize
-    bins = np.linspace(0, maxbin, nbins + 1)
+    binEdges = np.linspace(0, maxbin, nbins + 1)
 
-    bin_centers = (bins[1:] - bins[:-1]) / 2
-    values = np.histogram(r, bins, weights=mask * weight)[0]  # only first, element
-    radial_profile = (np.histogram(r, bins, weights=data * mask * weight)[0] /
-                      values)
+    binCenters = (binEdges[1] - binEdges[0]) / 2 + binEdges[:-1]
 
-    return radial_profile
+    # Number of data points in each bin. Cut out last point, always 0
+    nBinnedData = np.histogram(r, binEdges, weights=mask * weight)[0][:-1]
+    # Azimuthal average
+    radialProfile = (np.histogram(r, binEdges,
+                                  weights=data * mask * weight)[0][:-1] /
+                     nBinnedData)
+
+    return radialProfile, binCenters[:-1]
 
 
 def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
@@ -191,7 +208,6 @@ def psdn(data, fs=None, window=None, return_onesided=True,
     See also
     --------
     scipy.signal.get_window
-    scipy.signal.welch
     """
 
     data = np.asarray(data)
