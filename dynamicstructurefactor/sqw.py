@@ -9,6 +9,7 @@ daniel.seara@yale.edu
 """
 import numpy as np
 import scipy.signal as signal
+from astropy.convolution import convolve_fft
 import warnings
 
 
@@ -62,11 +63,11 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
     bins = np.linspace(0, maxbin, nbins + 1)
 
     bin_centers = (bins[1:] - bins[:-1]) / 2
-    values = np.histogram(r, bins)[0]  # second element returns bins themselves
-    radial_profile = np.histogram(r, bins, weights=data * mask * weight)[0] \
-        / np.histogram(r, bins, weights=mask * weight)[0]
+    values = np.histogram(r, bins, weights=mask * weight)[0]  # only first, element
+    radial_profile = (np.histogram(r, bins, weights=data * mask * weight)[0] /
+                      values)
 
-    return radial_profile, values, bin_centers
+    return radial_profile
 
 
 def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
@@ -147,28 +148,22 @@ def image2array(image):
     return imageArr
 
 
-def welchn(data, nperseg=None, noverlap=None, fs=None, window='boxcar',
-           return_onesided=True, scaling='density', detrend='constant',
-           nfft=None):
+def psdn(data, fs=None, window=None, return_onesided=True,
+         scaling='density', detrend='constant', nfft=None):
     """
-    Estimate power spectral density of n-dimensional data using Welch's method.
+    Estimate power spectral density of n-dimensional data.
 
     Parameters
     ----------
     data : array_like
         N-dimensional input array, can be complex
-    nperseg : array_like, optional
-        Length of each segment in each dimension. If `None`, uses whole
-        dimension length. Defaults to `None`.
-    noverlap : array_like, optional
-        Number of points to overlap between segments in each dimension. If
-        `None`, ``noverlap = nperseg // 2``. Defaults to `None`.
     fs : array_like, optional
         Sampling frequency in each dimension of data. Defaults to 1 for all
         dimensions
     window : string, float, or tuple, optional
-        Type of window to use, defaults to 'boxcar'.
-        See `scipy.signal.get_window` for all windows allowed
+        Type of window to use, defaults to 'boxcar' with shape of data, i.e.
+        data stays the same. See `scipy.signal.get_window` for all windows
+        allowed
     return_onesided : bool, optional
         Boolean to return one-sided power spectrum. If `data` is complex,
         always returns two-sided power spectrum. Defaults to `True`.
@@ -184,7 +179,7 @@ def welchn(data, nperseg=None, noverlap=None, fs=None, window='boxcar',
         done. Defaults to 'constant'.
     nfft : array_like, optional
         Length of the FFT used in each dimension, if a zero padded FFT is
-        desired. If `None`, the FFT length is `nperseg`. Defaults to `None`.
+        desired. If `None`, the FFT is taken over entire array. Defaults to `None`.
     Returns
     -------
     psd : array_like
@@ -204,14 +199,6 @@ def welchn(data, nperseg=None, noverlap=None, fs=None, window='boxcar',
     if window is None:
         window = 'boxcar'
 
-    if nperseg is not None:  # if specified by user
-        nperseg = np.asarray(nperseg).astype(int)
-        if nperseg.size != data.ndim:
-            raise ValueError('nperseg.size = {0}, need data.ndim = {1} values'
-                             .format(nperseg.size, data.ndim))
-    else:
-        nperseg = data.shape
-
     if fs is None:
         fs = np.ones(data.ndim)
     else:
@@ -220,47 +207,43 @@ def welchn(data, nperseg=None, noverlap=None, fs=None, window='boxcar',
             raise ValueError('fs.size = {0}, need data.ndim = {1} values'
                              .format(fs.size, data.ndim))
 
-    data, win = _nd_window(data, window, nperseg)
+    data, win = _nd_window(data, window)
     freqs = []
+
+    # Window squared and summed, generalized to nd
+    # See Numerical Recipes, section 13.4.1
+    wss = 1
+    for arr in win:
+        wss *= (arr**2).sum() * len(arr)
 
     # Set scaling
     if scaling == 'density':
-        scale = 1.0 / (fs * (win * win).sum())
+        scale = 1.0 / (np.prod(np.asarray(fs)) * wss)
     elif scaling == 'spectrum':
-        scale = 1.0 / win.sum()**2
+        scale = 1.0 / wss
     else:
         raise ValueError('Unknown scaling: {0}'.format(scaling))
 
+    psd = np.abs(np.fft.fftshift(convolve_fft(data, data, return_fft=True)))
+    psd *= scale
+
+    for dim, f in enumerate(fs):
+        freqs.append(np.linspace(-np.pi * f, np.pi * f, psd.shape[dim]))
+
     if return_onesided:
         if np.iscomplexobj(data):
-            sides = 'twosided'
+            return_onesided = False
             warnings.warn('Input data is complex, switching to '
                           'return_onesided=False')
         else:
-            sides = 'onesided'
-    else:
-        sides = 'twosided'
-
-    for dim_size, dim_sampling in zip(data.shape, fs):
-        freqs.append(2 * np.pi *
-                     np.fft.fftshift(np.fft.fftfreq(dim_size, dim_sampling)))
-
-    data_fft = np.fft.fftshift(np.fft.fftn(data))
-
-    if normalize:
-        psd = np.abs(data_fft / data_fft.size)**2
-    else:
-        psd = np.abs(data_fft)**2
-
-    if onesided:
-        psd = _one_side(psd, whichHalf=2)
-        for dim, array in enumerate(freqs):
-            freqs[dim] = _one_side(array, whichHalf=2)
+            psd = _one_side(psd)
+            for dim, array in enumerate(freqs):
+                freqs[dim] = _one_side(array)
 
     return psd, freqs
 
 
-def _one_side(array, axis=0, whichHalf=1):
+def _one_side(array, axis=0, whichHalf=2):
     """
     Gives back half of an array
 
@@ -272,7 +255,7 @@ def _one_side(array, axis=0, whichHalf=1):
         Which axis to return one side of. Default 0
     whichHalf : scalar, optional
         1 for first half of array along given axis, 2 for second half.
-        Default 1
+        Defaults to 2
 
     Returns
     -------
@@ -291,10 +274,10 @@ def _one_side(array, axis=0, whichHalf=1):
     return halfArray
 
 
-def _nd_window(data, window, nperseg):
+def _nd_window(data, window):
     """
     Windows n-dimensional array. Done to mitigate boundary effects in the FFT.
-    This is a helper function for welchn
+    This is a helper function for psdn
     Adapted from: https://stackoverflow.com/questions/27345861/
                   extending-1d-function-across-3-dimensions-for-data-windowing
 
@@ -305,6 +288,8 @@ def _nd_window(data, window, nperseg):
     window : string, float, or tuple
         Type of window to create. Same as `scipy.signal.get_window()`
     nperseg : array_like
+        Length of each segment in each dimension. If `None`, uses whole
+        dimension length. Defaults to `None`.
 
     Results
     -------
@@ -324,7 +309,7 @@ def _nd_window(data, window, nperseg):
         # set up shape for numpy broadcasting
         filter_shape = [1, ] * data.ndim
         filter_shape[axis] = axis_size
-        win[axis] = signal.get_window(window, axis_size).reshape(filter_shape)
+        win.append(signal.get_window(window, axis_size).reshape(filter_shape))
         # scale the window intensities to maintain image intensity
         np.power(win[axis], (1.0 / data.ndim), out=win[axis])
         data *= win[axis]
