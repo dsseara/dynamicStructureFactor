@@ -28,11 +28,11 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
     binsize : scalar, optional
         radial width of each annulus over which to average,
         in units of array index
-    mask : array_like or string, optional
+    mask : {array_like, 'circle', None}, optional
         Mask of data. Either a 2D array same size as data with 0s where you
-        want to exclude data, or "circle", which only includes data in the
-        largest inscribable circle within the data.
-        Default is to not use a mask
+        want to exclude data, "circle", which only includes data in the
+        largest inscribable circle within the data, or None, which uses no mask.
+        Defaults to None
 
     Returns
     -------
@@ -100,16 +100,18 @@ def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
     tdim : scalar, optional
         specifies which dimension of data is temporal. Options are 0, 1, 2.
         Defaults to 0
-    center : array_like, optional
+    center : array_like or None, optional
         1x2 numpy array the center of the image from which to measure the
-        radial profile from, in units of array index. Default is center of
-        data array
+        radial profile from, in units of array index. If None, uses center
+        of spatial slice of array. Defaults to None
     binsize : scalar, optional
         radial width of each annulus over which to average,
         in units of array index
-    mask : array_like, optional
-        2D array same size as data with 0s where you want to exclude data.
-        Default is to not use a mask
+    mask : {array_like, 'circle', None}, optional
+        Mask of data. Either a 2D array same size as data with 0s where you
+        want to exclude data, "circle", which only includes data in the
+        largest inscribable circle within the data, or None, which uses no mask.
+        Defaults to None
 
     Returns
     -------
@@ -129,17 +131,17 @@ def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
     data = np.rollaxis(data, tdim)
 
     for frame, spatial_data in enumerate(data):
-        radial_profile = azimuthal_average(spatial_data,
-                                           center,
-                                           binsize,
-                                           mask,
-                                           weight)
+        radial_profile, r = azimuthal_average(spatial_data,
+                                              center,
+                                              binsize,
+                                              mask,
+                                              weight)
         if frame == 0:
             tr_profile = radial_profile
         else:
             tr_profile = np.vstack((tr_profile, radial_profile))
 
-    return tr_profile
+    return tr_profile, r
 
 
 def image2array(image):
@@ -240,7 +242,8 @@ def psdn(data, fs=None, window=None, return_onesided=True,
     else:
         raise ValueError('Unknown scaling: {0}'.format(scaling))
 
-    psd = np.abs(np.fft.fftshift(convolve_fft(data, data, return_fft=True)))
+    psd = np.abs(np.fft.fftshift(convolve_fft(data, data, boundary='wrap',
+                                              return_fft=True)))
     psd *= scale
 
     for dim, f in enumerate(fs):
