@@ -13,7 +13,8 @@ from astropy.convolution import convolve_fft
 import warnings
 
 
-def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
+def azimuthal_average(data, center=None, binsize=1, mask=None, weight=None,
+                      dx=1.0):
     """
     Calculates the azimuthal average of a 2D array
 
@@ -33,12 +34,15 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
         want to exclude data, "circle", which only includes data in the
         largest inscribable circle within the data, or None, which uses no mask.
         Defaults to None
+    dx : float, optional
+        Sampling spacing in data. To be used when returning radial coordinate.
+        Defaults to 1.0
 
     Returns
     -------
     radialProfile : array_like
         Radially averaged 1D array from data array
-    binCenters : array_like
+    r : array_like
         Radial coordinate of radial_profile
 
     Based on radialProfile found at:
@@ -46,7 +50,7 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
 
     To do
     -----
-    * Make "circle" option of mask accept non-square inputs
+    1) Make "circle" option of mask accept non-square inputs
     """
     data = np.asarray(data)
     # Get all the indices in x and y direction
@@ -84,13 +88,13 @@ def azimuthal_average(data, center=None, binsize=1.0, mask=None, weight=None):
                                   weights=data * mask * weight)[0][:-1] /
                      nBinnedData)
 
-    return radialProfile, binCenters[:-1]
+    return radialProfile, binCenters[:-1] * binsize * dx
 
 
-def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
-                         weight=None):
+def azimuthal_average_3D(data, tdim=0, center=None, binsize=1, mask=None,
+                         weight=None, dx=1.0):
     """
-    Takes 3D data and gets radial component of last two dimensions
+    Takes 3D data and gets radial component of two dimensions
 
     Parameters
     ----------
@@ -112,17 +116,23 @@ def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
         want to exclude data, "circle", which only includes data in the
         largest inscribable circle within the data, or None, which uses no mask.
         Defaults to None
+    dx : float, optional
+        Sampling spacing in dimensions of data over which the averagin is done.
+        To be used when returning radial coordinate. Defaults to 1.0
 
     Returns
     -------
     tr_profile : array_like
         2D, spatially radially averaged data over time.
         First dimesion is time, second is spatial
+    r : array_like
+        Radial coordinate of radial_profile
 
-    See also: azimuthalAverage
+    See also: azimuthal_average
+
     TO DO
     -----
-
+    1) Allow input of non-square data to average over
     """
 
     data = np.asarray(data)
@@ -135,7 +145,8 @@ def azimuthal_average_3D(data, tdim=0, center=None, binsize=1.0, mask=None,
                                               center,
                                               binsize,
                                               mask,
-                                              weight)
+                                              weight,
+                                              dx)
         if frame == 0:
             tr_profile = radial_profile
         else:
